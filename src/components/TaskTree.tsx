@@ -14,7 +14,6 @@ export default function TaskTree({
   onToggleCollapse,
   onRequestQuickAddUnder,
   searchQuery,
-  showHandles,
 }: {
   roots: TodoNode[];
   editingId: string | null;
@@ -26,7 +25,6 @@ export default function TaskTree({
   onToggleCollapse: (id: string) => void;
   onRequestQuickAddUnder: (id: string) => void;
   searchQuery: string;
-  showHandles: boolean;
 }) {
   const ids = useMemo(() => roots.map((r) => r.id), [roots]);
 
@@ -47,7 +45,7 @@ export default function TaskTree({
             onToggleCollapse={onToggleCollapse}
             onRequestQuickAddUnder={onRequestQuickAddUnder}
             searchQuery={searchQuery}
-            showHandles={showHandles}
+            showHandles={true}
           />
         ))}
       </SortableContext>

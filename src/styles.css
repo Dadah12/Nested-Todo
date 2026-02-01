@@ -3,7 +3,7 @@
   --card:#0f1620;
   --card2:#101a26;
   --text:#e8edf4;
-  --muted:#a9b3c2;
+  --muted:#9aa7b8;
   --line:rgba(255,255,255,.08);
   --accent:#6ee7ff;
   --accent2:#a78bfa;
@@ -11,6 +11,12 @@
   --ok:#34d399;
   --shadow: 0 12px 30px rgba(0,0,0,.35);
   --radius:16px;
+
+  --tap: 44px;
+  --row-gap: 8px;
+
+  /* Reserve space for kebab so text never overlaps */
+  --kebab-space: 56px;
 }
 
 *{box-sizing:border-box;}
@@ -26,17 +32,39 @@ body{
 }
 
 a{color:inherit;}
+
 mark.mark{
-  background: rgba(110,231,255,.18);
+  background: rgba(110,231,255,.14);
   color: var(--text);
   padding: 0 3px;
   border-radius: 6px;
 }
 
 .page{
+  width: 100%;
   max-width: 820px;
   margin: 0 auto;
   padding: 18px 14px 40px;
+}
+
+@media (min-width: 900px){
+  :root{
+    --tap: 48px;
+    --row-gap: 10px;
+    --radius: 18px;
+    --kebab-space: 64px;
+  }
+
+  .page{
+    max-width: 100%;
+    padding: 26px 34px 56px;
+  }
+}
+
+@media (min-width: 1280px){
+  .page{
+    padding: 28px 52px 66px;
+  }
 }
 
 .top{
@@ -51,6 +79,7 @@ mark.mark{
   align-items:center;
   gap:12px;
 }
+
 .logo{
   width:42px;height:42px;
   display:grid;place-items:center;
@@ -60,6 +89,7 @@ mark.mark{
   box-shadow: var(--shadow);
   font-weight: 800;
 }
+
 .brandName{font-size: 16px; font-weight: 800; letter-spacing:.2px;}
 .brandSub{font-size: 12px; color: var(--muted);}
 
@@ -72,9 +102,12 @@ mark.mark{
 @media(min-width:720px){
   .top{flex-direction:row; align-items:flex-end; justify-content:space-between;}
   .controls{align-items:flex-end;}
+  .brandName{font-size: 18px;}
+  .brandSub{font-size: 13px;}
 }
 
 .card{
+  width: 100%;
   background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
   border: 1px solid rgba(255,255,255,.10);
   border-radius: var(--radius);
@@ -82,25 +115,35 @@ mark.mark{
   padding: 14px;
 }
 
+@media (min-width: 900px){
+  .card{padding: 18px;}
+}
+
 .addRow{
   display:flex;
   gap: 10px;
   flex-wrap: wrap;
 }
+
 .addInput{
   flex: 1 1 260px;
-  min-height: 44px;
+  min-height: var(--tap);
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid var(--line);
   background: rgba(0,0,0,.25);
   color: var(--text);
   outline:none;
+  font-size: 15px;
 }
-.addInput:focus{border-color: rgba(110,231,255,.35); box-shadow: 0 0 0 3px rgba(110,231,255,.08);}
+
+.addInput:focus{
+  border-color: rgba(110,231,255,.35);
+  box-shadow: 0 0 0 3px rgba(110,231,255,.08);
+}
 
 .btn{
-  min-height: 44px;
+  min-height: var(--tap);
   padding: 0 12px;
   border-radius: 12px;
   border: 1px solid rgba(110,231,255,.25);
@@ -112,7 +155,9 @@ mark.mark{
   cursor:pointer;
   user-select:none;
 }
+
 .btn:disabled{opacity:.5; cursor:not-allowed;}
+
 .ghostBtn{
   border-color: rgba(255,255,255,.14);
   background: rgba(255,255,255,.06);
@@ -127,7 +172,9 @@ mark.mark{
   border: 1px solid var(--line);
   background: rgba(0,0,0,.25);
 }
+
 .searchIcon{opacity:.8;}
+
 .searchInput{
   flex:1;
   border: none;
@@ -136,9 +183,10 @@ mark.mark{
   color: var(--text);
   font-size: 14px;
 }
+
 .iconBtn{
-  width: 38px;
-  height: 38px;
+  width: var(--tap);
+  height: var(--tap);
   border-radius: 12px;
   border: 1px solid rgba(255,255,255,.14);
   background: rgba(255,255,255,.06);
@@ -147,18 +195,34 @@ mark.mark{
   color: var(--text);
   cursor:pointer;
 }
+
 .iconBtn.ghost{
   background: transparent;
   border-color: transparent;
 }
-.iconBtn.ghost:hover{background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.10);}
-.iconBtn.danger{border-color: rgba(255,91,107,.35); background: rgba(255,91,107,.10);}
+
+.iconBtn.ghost:hover{
+  background: rgba(255,255,255,.06);
+  border-color: rgba(255,255,255,.10);
+}
+
+.iconBtn.danger{
+  border-color: rgba(255,91,107,.35);
+  background: rgba(255,91,107,.10);
+}
+
+.iconBtn.active{
+  border-color: rgba(110,231,255,.30);
+  background: rgba(110,231,255,.08);
+}
+
 .iconBtn:active{transform: translateY(1px);}
 
 .tabs{
   display:flex;
   gap: 10px;
 }
+
 .tab{
   flex:1;
   min-height: 42px;
@@ -173,10 +237,12 @@ mark.mark{
   gap:8px;
   cursor:pointer;
 }
+
 .tab.active{
   border-color: rgba(110,231,255,.35);
   background: rgba(110,231,255,.10);
 }
+
 .pill{
   font-size: 12px;
   padding: 2px 8px;
@@ -195,6 +261,7 @@ mark.mark{
 }
 .progressLabel{font-size: 12px; color: var(--muted);}
 .progressMeta{font-size: 12px; color: var(--muted);}
+
 .progressBar{
   width:100%;
   height: 10px;
@@ -203,6 +270,7 @@ mark.mark{
   background: rgba(0,0,0,.25);
   overflow:hidden;
 }
+
 .progressFill{
   height:100%;
   background: linear-gradient(90deg, rgba(110,231,255,.75), rgba(167,139,250,.72));
@@ -217,11 +285,13 @@ mark.mark{
   justify-content:space-between;
   margin: 10px 0 6px;
 }
+
 .toolLeft, .toolRight{
   display:flex;
   gap: 10px;
   flex-wrap: wrap;
 }
+
 .chip{
   padding: 8px 10px;
   border-radius: 999px;
@@ -233,50 +303,64 @@ mark.mark{
   gap: 8px;
   cursor:pointer;
 }
+
 .dangerChip{border-color: rgba(255,91,107,.30); background: rgba(255,91,107,.08);}
 
 .tree{
   margin-top: 8px;
   display:flex;
   flex-direction:column;
-  gap: 8px;
+  gap: var(--row-gap);
 }
 
+/* Task row (desktop default) */
 .row{
   border: 1px solid rgba(255,255,255,.10);
   border-radius: 14px;
   background: rgba(0,0,0,.18);
-  overflow:hidden;
+  overflow: visible;
 }
+
 .row.doneGroup{
-  border-color: rgba(52,211,153,.25);
-  background: rgba(52,211,153,.06);
+  border-color: rgba(52,211,153,.22);
+  background: rgba(52,211,153,.05);
 }
+
 .rowInner{
   display:flex;
-  align-items:center;
+  align-items:flex-start;
   justify-content:space-between;
   gap: 10px;
-  padding: 8px 8px;
+  padding: 12px 12px;
+  position: relative;
+  padding-right: var(--kebab-space); /* reserve for kebab */
 }
+
 .leftBits{
   display:flex;
-  align-items:center;
+  align-items:flex-start;
   gap: 8px;
   min-width: 0;
   flex: 1;
 }
+
 .spacerIcon{
-  width:38px;height:38px;
+  width: var(--tap);
+  height: var(--tap);
 }
+
 .chk{
   width: 20px;
   height: 20px;
   accent-color: var(--ok);
 }
+
+/* Drag handle: visible but subtle */
 .dragHandle{
-  cursor: grab;
+  opacity: .75;
 }
+.dragHandle:hover{opacity: 1;}
+
 .titleBtn{
   flex: 1;
   min-width: 0;
@@ -284,22 +368,39 @@ mark.mark{
   border: none;
   background: transparent;
   color: var(--text);
-  padding: 0;
-  cursor: text;
+  padding: 2px 0;
+  cursor: pointer;
   display:flex;
-  align-items:center;
+  align-items:flex-start;
   gap:10px;
 }
+
 .titleText{
-  overflow:hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 14px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.35;
+  font-size: 16px;
 }
+
+@media(min-width:720px){
+  .titleText{
+    -webkit-line-clamp: 1;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    display: block;
+    font-size: 16px;
+  }
+}
+
 .strike .titleText{
   text-decoration: line-through;
   opacity:.75;
 }
+
 .miniMeta{
   font-size: 12px;
   color: var(--muted);
@@ -307,81 +408,170 @@ mark.mark{
   padding: 2px 8px;
   border-radius: 999px;
   flex: none;
+  margin-top: 2px;
 }
+
 .titleInput{
   flex:1;
   min-width: 140px;
-  padding: 8px 10px;
+  min-height: var(--tap);
+  padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid rgba(255,255,255,.12);
   background: rgba(0,0,0,.25);
   color: var(--text);
   outline:none;
 }
-.titleInput:focus{border-color: rgba(110,231,255,.35); box-shadow: 0 0 0 3px rgba(110,231,255,.08);}
 
-.actions{
-  display:flex;
-  gap: 6px;
-  flex: none;
+.titleInput:focus{
+  border-color: rgba(110,231,255,.35);
+  box-shadow: 0 0 0 3px rgba(110,231,255,.08);
 }
 
-/* Children list animation container */
-.children{border-top: 1px solid rgba(255,255,255,.06);}
+/* Kebab */
+.actionsKebab{
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  z-index: 5;
+  display:flex;
+  align-items:center;
+}
+
+.kebabBtn{
+  width: var(--tap);
+  height: var(--tap);
+  border-radius: 12px;
+}
+
+.menuPanel{
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 30;
+  min-width: 190px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(15,22,32,.96);
+  box-shadow: var(--shadow);
+  padding: 6px;
+  backdrop-filter: blur(10px);
+}
+
+.menuItem{
+  width: 100%;
+  min-height: 42px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  color: var(--text);
+  padding: 8px 10px;
+  cursor:pointer;
+  text-align:left;
+}
+
+.menuItem:hover{
+  background: rgba(255,255,255,.06);
+  border-color: rgba(255,255,255,.10);
+}
+
+.menuItem.danger{
+  color: #ffd3d8;
+}
+
+.menuItem.danger:hover{
+  background: rgba(255,91,107,.10);
+  border-color: rgba(255,91,107,.22);
+}
+
+.menuDivider{
+  height: 1px;
+  background: rgba(255,255,255,.07);
+  margin: 6px 6px;
+}
+
+/* Children list */
+.children{
+  border-top: 1px solid rgba(255,255,255,.06);
+}
+
 .childrenInner{
-  padding: 8px;
+  padding: 10px;
   display:flex;
   flex-direction:column;
-  gap: 8px;
+  gap: var(--row-gap);
 }
 
-.empty{
-  display:flex;
-  gap: 12px;
-  align-items:flex-start;
-  padding: 18px 12px;
-  border: 1px dashed rgba(255,255,255,.16);
-  border-radius: 14px;
-  color: var(--muted);
-  background: rgba(255,255,255,.03);
-}
-.emptyTitle{
-  color: var(--text);
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-.emptyDesc{font-size: 12px; line-height: 1.4;}
-
+/* Footer */
 .footer{
   margin-top: 14px;
   display:flex;
+  flex-direction: column;
   align-items:center;
   justify-content:center;
   gap: 10px;
   color: var(--muted);
   font-size: 12px;
+  text-align: center;
 }
-.footerText{display:flex; align-items:center; gap: 6px;}
-.link{text-decoration: underline; text-underline-offset: 3px;}
-.heart{
-  width: 34px;
-  height: 34px;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,.12);
-  background: rgba(255,255,255,.06);
-  color: rgba(255,255,255,.70);
+
+.footerAd{
+  width: min(900px, 100%);
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.03);
+  display:flex;
+  flex-wrap: wrap;
+  align-items:center;
+  justify-content:center;
+  gap: 8px;
+}
+
+.footerAd strong{
+  color: rgba(255,255,255,.84);
+  font-weight: 700;
+}
+
+.footerLinks{
+  display:inline-flex;
+  align-items:center;
+  gap: 10px;
+}
+
+.footerSep{opacity:.45;}
+
+.footerText{
+  display:flex;
+  align-items:center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content:center;
+}
+
+.link{
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.heartInline{
+  border: none;
+  background: transparent;
   cursor:pointer;
+  color: rgba(255,255,255,.65);
+  padding: 0 2px;
+  font-size: 14px;
+  line-height: 1;
 }
-.heart.on{
-  border-color: rgba(167,139,250,.35);
-  background: rgba(167,139,250,.14);
+
+.heartInline.on{
   color: var(--accent2);
 }
-.heartInline{
-  color: rgba(255,255,255,.70);
-}
-.heartInline.on{color: var(--accent2);}
 
+/* Toast */
 .toastHost{
   position: fixed;
   left: 50%;
@@ -393,6 +583,7 @@ mark.mark{
   z-index: 50;
   pointer-events:none;
 }
+
 .toast{
   pointer-events:none;
   padding: 10px 12px;
@@ -404,6 +595,7 @@ mark.mark{
   box-shadow: var(--shadow);
 }
 
+/* Modal */
 .modalOverlay{
   position: fixed;
   inset: 0;
@@ -413,6 +605,7 @@ mark.mark{
   z-index: 60;
   padding: 14px;
 }
+
 .modal{
   width: min(720px, 100%);
   border-radius: 16px;
@@ -421,6 +614,7 @@ mark.mark{
   box-shadow: var(--shadow);
   overflow:hidden;
 }
+
 .modalHeader{
   display:flex;
   justify-content:space-between;
@@ -428,44 +622,73 @@ mark.mark{
   padding: 12px 12px;
   border-bottom: 1px solid rgba(255,255,255,.08);
 }
+
 .modalTitle{font-weight: 800;}
 .modalBody{padding: 12px;}
 
-.stack{display:flex; flex-direction:column; gap: 10px;}
-.rowWrap{display:flex; gap: 10px; align-items:center; flex-wrap:wrap;}
-.label{font-size:12px;color:var(--muted);}
-.select{
-  min-height: 40px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,.12);
-  background: rgba(0,0,0,.25);
-  color: var(--text);
-}
-.textarea{
-  width:100%;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,.12);
-  background: rgba(0,0,0,.25);
-  color: var(--text);
-  padding: 10px 12px;
-  outline:none;
-}
-.hint{font-size:12px;color:var(--muted);}
-.rowBetween{display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;}
-.muted{color:var(--muted); font-size: 12px;}
-.preview{
-  border: 1px solid rgba(255,255,255,.08);
-  background: rgba(255,255,255,.03);
-  border-radius: 14px;
-  padding: 10px;
-}
-.previewList{margin: 8px 0 0; padding-left: 18px;}
-.previewItem{font-size: 13px; color: var(--text);}
-.dragOverlayCard{
-  padding: 10px 12px;
-  border-radius: 14px;
-  border: 1px solid rgba(110,231,255,.25);
-  background: rgba(110,231,255,.10);
-  box-shadow: var(--shadow);
+/* ===========================
+   MOBILE FIXES:
+   - remove bright overlay completely
+   - solid background (no radial wash)
+   - clamp indent
+   - compact row buttons so nesting stays readable
+   =========================== */
+@media (max-width: 719px){
+  body{
+    /* This removes the random bright bands on scroll for mobile. */
+    background: var(--bg);
+  }
+
+  .row{
+    border: none !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    overflow: visible;
+  }
+
+  .rowInner{
+    --indent: min(calc(var(--vdepth, 0) * 10px), 24px);
+    padding: 10px 8px !important;
+    padding-left: calc(8px + var(--indent)) !important;
+    padding-right: var(--kebab-space) !important;
+  }
+
+  /* IMPORTANT: We intentionally DO NOT add ::before overlay here.
+     That overlay is what created the bright "highlight band" you saw. */
+
+  /* Compact only inside rows (keeps top toolbar comfortable) */
+  .rowInner .iconBtn{
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+  }
+
+  .rowInner .spacerIcon{
+    width: 38px;
+    height: 38px;
+  }
+
+  .titleText{
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    display: block !important;
+    font-size: 16px !important;
+    line-height: 1.45 !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  .miniMeta{display:none !important;}
+
+  .childrenInner{
+    margin-left: 0 !important;
+    padding: 8px 0 0 !important;
+    border-left: none !important;
+  }
+
+  .menuPanel{
+    width: min(220px, calc(100vw - 20px));
+  }
 }
