@@ -422,7 +422,7 @@ a { color: inherit; }
   padding: 8px 10px;
   display: inline-flex;
   gap: 8px;
-  align tej ign-items: center;
+  align-items: center;
   cursor: pointer;
 }
 
