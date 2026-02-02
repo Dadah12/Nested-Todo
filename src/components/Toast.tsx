@@ -1,52 +1,59 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import React, { createContext, useContext, useMemo, useState } from "react";
 
-type Toast = { id: string; message: string };
+type ToastKind = "success" | "error";
 
-const ToastCtx = createContext<{ push: (msg: string) => void } | null>(null);
+type ToastItem = {
+  id: string;
+  kind: ToastKind;
+  msg: string;
+};
 
-export function useToast() {
-  const ctx = useContext(ToastCtx);
-  if (!ctx) throw new Error("useToast must be used inside <ToastProvider/>");
-  return ctx;
-}
+type ToastApi = {
+  success: (msg: string) => void;
+  error: (msg: string) => void;
+};
 
-function rid() {
-  return Math.random().toString(16).slice(2) + Date.now().toString(16);
+const Ctx = createContext<ToastApi | null>(null);
+
+function makeId() {
+  return Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(2, 6);
 }
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
-  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [items, setItems] = useState<ToastItem[]>([]);
 
-  const push = useCallback((message: string) => {
-    const id = rid();
-    setToasts((t) => [...t, { id, message }]);
+  const push = (kind: ToastKind, msg: string) => {
+    const id = makeId();
+    setItems((prev) => [...prev, { id, kind, msg }]);
     window.setTimeout(() => {
-      setToasts((t) => t.filter((x) => x.id !== id));
-    }, 1800);
-  }, []);
+      setItems((prev) => prev.filter((t) => t.id !== id));
+    }, 2600);
+  };
 
-  const value = useMemo(() => ({ push }), [push]);
+  const api = useMemo<ToastApi>(
+    () => ({
+      success: (msg) => push("success", msg),
+      error: (msg) => push("error", msg),
+    }),
+    []
+  );
 
   return (
-    <ToastCtx.Provider value={value}>
+    <Ctx.Provider value={api}>
       {children}
-      <div className="toastHost" aria-live="polite" aria-relevant="additions">
-        <AnimatePresence>
-          {toasts.map((t) => (
-            <motion.div
-              key={t.id}
-              className="toast"
-              initial={{ opacity: 0, y: 8, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 8, scale: 0.98 }}
-              transition={{ duration: 0.15 }}
-            >
-              {t.message}
-            </motion.div>
-          ))}
-        </AnimatePresence>
+      <div className="toastWrap" aria-live="polite" aria-atomic="true">
+        {items.map((t) => (
+          <div key={t.id} className={`toast ${t.kind}`}>
+            {t.msg}
+          </div>
+        ))}
       </div>
-    </ToastCtx.Provider>
+    </Ctx.Provider>
   );
+}
+
+export function useToast() {
+  const v = useContext(Ctx);
+  if (!v) throw new Error("useToast must be used inside ToastProvider");
+  return v;
 }

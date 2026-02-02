@@ -1,38 +1,27 @@
 import type { TodoNode } from "../types";
 
-const KEY = "dang_nested_todo_v1";
-const HEART_KEY = "dang_nested_todo_heart_v1";
+const KEY = "nested_todo_state_v1";
 
-export function loadTree(): TodoNode[] {
+export type StoredState = {
+  roots: TodoNode[];
+};
+
+export function loadState(): StoredState | null {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as TodoNode[];
-    if (!Array.isArray(parsed)) return [];
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredState;
+    if (!parsed?.roots) return null;
     return parsed;
   } catch {
-    return [];
+    return null;
   }
 }
 
-export function saveTree(tree: TodoNode[]) {
-  localStorage.setItem(KEY, JSON.stringify(tree));
-}
-
-export function loadHeart(): boolean {
+export function saveState(state: StoredState) {
   try {
-    const raw = localStorage.getItem(HEART_KEY);
-    if (!raw) return false;
-    return raw === "1";
+    localStorage.setItem(KEY, JSON.stringify(state));
   } catch {
-    return false;
+    // Ignore storage errors (private mode, blocked storage, etc.)
   }
-}
-export function saveHeart(on: boolean) {
-  localStorage.setItem(HEART_KEY, on ? "1" : "0");
-}
-
-export function clearAll() {
-  localStorage.removeItem(KEY);
-  localStorage.removeItem(HEART_KEY);
 }

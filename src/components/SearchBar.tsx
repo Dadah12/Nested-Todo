@@ -14,8 +14,8 @@ export default function SearchBar({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Cmd/Ctrl+K focuses search (nice premium)
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      const isK = e.key.toLowerCase() === "k";
+      if ((e.ctrlKey || e.metaKey) && isK) {
         e.preventDefault();
         ref.current?.focus();
       }
@@ -25,8 +25,8 @@ export default function SearchBar({
   }, []);
 
   return (
-    <div className="search">
-      <Search size={18} className="searchIcon" />
+    <div className="searchWrap">
+      <Search size={16} className="searchIcon" />
       <input
         ref={ref}
         className="searchInput"
@@ -35,8 +35,8 @@ export default function SearchBar({
         onChange={(e) => onChange(e.target.value)}
       />
       {value.trim() ? (
-        <button className="iconBtn ghost" onClick={onClear} aria-label="Clear search">
-          <X size={18} />
+        <button className="searchClear" type="button" onClick={onClear} aria-label="Clear search">
+          <X size={16} />
         </button>
       ) : null}
     </div>

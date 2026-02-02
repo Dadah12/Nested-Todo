@@ -1,351 +1,204 @@
-import { uid } from "./ids";
+import type { TodoNode } from "../types";
 
-/**
- * ✅ Self-contained type para hindi mag-"never"
- * Re-export mo na lang sa src/types.ts (instructions below)
- */
-export type TodoNode = {
-  id: string;
-  title: string;
-  checked: boolean;
-  collapsed: boolean;
-  children: TodoNode[];
-  createdAt: number;
-  updatedAt?: number;
-};
+export function makeId() {
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(2, 7);
+}
 
 export function createNode(title: string): TodoNode {
-  const now = Date.now();
-  return {
-    id: uid(),
-    title: title.trim() || "Untitled",
-    checked: false,
-    collapsed: false,
-    children: [],
-    createdAt: now,
-    updatedAt: now,
-  };
+  return { id: makeId(), title, checked: false, collapsed: false, children: [] };
 }
 
-/** Leaf completion is node.checked. Parent completion is derived: all descendants complete. */
-export function isComplete(node: TodoNode): boolean {
-  if (node.children.length === 0) return !!node.checked;
-  return node.children.every(isComplete);
+function cloneNode(n: TodoNode): TodoNode {
+  return { ...n, children: (n.children ?? []).map(cloneNode) };
 }
 
-/** Parent indeterminate = has children AND (some complete) AND (not all complete). */
-export function isIndeterminate(node: TodoNode): boolean {
-  if (node.children.length === 0) return false;
-
-  const all = node.children.every(isComplete);
-  const some = node.children.some((c) => isComplete(c) || hasAnyComplete(c));
-
-  return some && !all;
-}
-
-function hasAnyComplete(node: TodoNode): boolean {
-  if (node.children.length === 0) return !!node.checked;
-  return node.children.some((c) => isComplete(c) || hasAnyComplete(c));
-}
-
-export function hasChildren(node: TodoNode): boolean {
-  return node.children.length > 0;
-}
-
-/** Done-tab rule: a node is "done-group" only if it has children and all descendants are complete. */
-export function isDoneGroup(node: TodoNode): boolean {
-  return node.children.length > 0 && isComplete(node);
-}
-
-export function countProgress(node: TodoNode): { done: number; total: number } {
-  // Count leaf items only for progress, plus include parents with no children (they behave like leaf tasks).
-  if (node.children.length === 0) {
-    return { done: node.checked ? 1 : 0, total: 1 };
-  }
-
-  return node.children.reduce(
-    (acc, child) => {
-      const p = countProgress(child);
-      acc.done += p.done;
-      acc.total += p.total;
-      return acc;
-    },
-    { done: 0, total: 0 }
-  );
-}
-
-export function countProgressForest(roots: TodoNode[]): { done: number; total: number } {
-  return roots.reduce(
-    (acc, r) => {
-      const p = countProgress(r);
-      acc.done += p.done;
-      acc.total += p.total;
-      return acc;
-    },
-    { done: 0, total: 0 }
-  );
-}
-
-export type UpdateFn = (node: TodoNode) => TodoNode;
-
-/**
- * ✅ Immutable update by id (keeps referential stability when no change)
- */
-export function updateById(roots: TodoNode[], id: string, fn: UpdateFn): TodoNode[] {
+function mapTree(roots: TodoNode[], fn: (n: TodoNode) => TodoNode): TodoNode[] {
   const walk = (n: TodoNode): TodoNode => {
-    if (n.id === id) return fn(n);
-
-    if (n.children.length === 0) return n;
-
-    let changed = false;
-    const nextChildren = n.children.map((c) => {
-      const next = walk(c);
-      if (next !== c) changed = true;
-      return next;
-    });
-
-    return changed ? { ...n, children: nextChildren, updatedAt: Date.now() } : n;
-  };
-
-  let changedRoots = false;
-  const nextRoots = roots.map((r) => {
-    const next = walk(r);
-    if (next !== r) changedRoots = true;
+    const next = fn({ ...n });
+    next.children = (next.children ?? []).map(walk);
     return next;
-  });
-
-  return changedRoots ? nextRoots : roots;
-}
-
-export function deleteById(roots: TodoNode[], id: string): TodoNode[] {
-  const prune = (arr: TodoNode[]): TodoNode[] => {
-    let changed = false;
-
-    const kept: TodoNode[] = [];
-    for (const n of arr) {
-      if (n.id === id) {
-        changed = true;
-        continue;
-      }
-
-      if (n.children.length === 0) {
-        kept.push(n);
-        continue;
-      }
-
-      const kids = prune(n.children);
-      if (kids !== n.children) {
-        changed = true;
-        kept.push({ ...n, children: kids, updatedAt: Date.now() });
-      } else {
-        kept.push(n);
-      }
-    }
-
-    return changed ? kept : arr;
   };
-
-  return prune(roots);
-}
-
-export function insertChild(roots: TodoNode[], parentId: string, title: string): TodoNode[] {
-  const child = createNode(title);
-  return updateById(roots, parentId, (n) => ({
-    ...n,
-    collapsed: false,
-    children: [...n.children, child],
-    updatedAt: Date.now(),
-  }));
-}
-
-export function insertRoot(roots: TodoNode[], title: string): TodoNode[] {
-  return [...roots, createNode(title)];
-}
-
-/**
- * ✅ Toggle leaf check.
- * If node has children, treat as toggle-all (set all descendant leaves).
- */
-export function toggleCheck(roots: TodoNode[], id: string, target?: boolean): TodoNode[] {
-  const current = findById(roots, id);
-  if (!current) return roots;
-
-  const desired =
-    typeof target === "boolean"
-      ? target
-      : current.children.length
-        ? !isComplete(current)
-        : !current.checked;
-
-  const setAllLeaves = (n: TodoNode): TodoNode => {
-    if (n.children.length === 0) {
-      return { ...n, checked: desired, updatedAt: Date.now() };
-    }
-    return {
-      ...n,
-      children: n.children.map(setAllLeaves),
-      updatedAt: Date.now(),
-    };
-  };
-
-  if (current.children.length) {
-    return updateById(roots, id, (n) => setAllLeaves(n));
-  }
-
-  return updateById(roots, id, (n) => ({ ...n, checked: desired, updatedAt: Date.now() }));
-}
-
-export function toggleCollapse(roots: TodoNode[], id: string): TodoNode[] {
-  return updateById(roots, id, (n) => ({ ...n, collapsed: !n.collapsed, updatedAt: Date.now() }));
-}
-
-export function rename(roots: TodoNode[], id: string, title: string): TodoNode[] {
-  const nextTitle = title.trim() || "Untitled";
-  return updateById(roots, id, (n) => ({ ...n, title: nextTitle, updatedAt: Date.now() }));
-}
-
-export function setCollapseAll(roots: TodoNode[], collapsed: boolean): TodoNode[] {
-  const walk = (n: TodoNode): TodoNode => ({
-    ...n,
-    collapsed,
-    children: n.children.map(walk),
-    updatedAt: Date.now(),
-  });
-
   return roots.map(walk);
 }
 
-export function buildParentMap(roots: TodoNode[]): Map<string, string | null> {
-  const map = new Map<string, string | null>();
-  const walk = (arr: TodoNode[], parent: string | null) => {
-    for (const n of arr) {
-      map.set(n.id, parent);
-      if (n.children.length) walk(n.children, n.id);
+function updateNode(roots: TodoNode[], id: string, fn: (n: TodoNode) => TodoNode): TodoNode[] {
+  const walk = (n: TodoNode): TodoNode => {
+    if (n.id === id) {
+      const updated = fn({ ...n });
+      updated.children = (updated.children ?? []).map(cloneNode);
+      return updated;
     }
+    return { ...n, children: (n.children ?? []).map(walk) };
   };
-  walk(roots, null);
-  return map;
+  return roots.map(walk);
 }
 
-/** Reorder siblings within the same parent (including roots when parent is null). */
-export function reorderSiblings(
-  roots: TodoNode[],
-  parentId: string | null,
-  activeId: string,
-  overId: string
-): TodoNode[] {
-  const reorder = (arr: TodoNode[]): TodoNode[] => {
-    const oldIndex = arr.findIndex((n) => n.id === activeId);
-    const newIndex = arr.findIndex((n) => n.id === overId);
-    if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return arr;
+export function addRoot(roots: TodoNode[], title: string): TodoNode[] {
+  const next = roots.map(cloneNode);
+  next.push(createNode(title));
+  return next;
+}
 
-    const next = arr.slice();
-    const [moved] = next.splice(oldIndex, 1);
-    next.splice(newIndex, 0, moved);
+export function addChild(roots: TodoNode[], parentId: string, title: string): TodoNode[] {
+  return updateNode(roots, parentId, (n) => {
+    const next = { ...n };
+    next.collapsed = false;
+    next.children = [...(next.children ?? []), createNode(title)];
     return next;
-  };
-
-  if (parentId === null) return reorder(roots);
-
-  return updateById(roots, parentId, (p) => ({ ...p, children: reorder(p.children), updatedAt: Date.now() }));
+  });
 }
 
-/** Search: keep only nodes that match or have a descendant match. */
+export function upsertUnderParent(roots: TodoNode[], parentId: string, nodes: TodoNode[]): TodoNode[] {
+  return updateNode(roots, parentId, (n) => {
+    const next = { ...n };
+    next.collapsed = false;
+    next.children = [...(next.children ?? []), ...nodes.map(cloneNode)];
+    return next;
+  });
+}
+
+export function insertManyRoots(roots: TodoNode[], nodes: TodoNode[]): TodoNode[] {
+  return [...roots.map(cloneNode), ...nodes.map(cloneNode)];
+}
+
+export function renameNode(roots: TodoNode[], id: string, title: string): TodoNode[] {
+  return updateNode(roots, id, (n) => ({ ...n, title }));
+}
+
+export function toggleCollapse(roots: TodoNode[], id: string): TodoNode[] {
+  return updateNode(roots, id, (n) => ({ ...n, collapsed: !n.collapsed }));
+}
+
+export function expandAll(roots: TodoNode[]): TodoNode[] {
+  return mapTree(roots, (n) => ({ ...n, collapsed: false }));
+}
+
+export function collapseAll(roots: TodoNode[]): TodoNode[] {
+  return mapTree(roots, (n) => ({ ...n, collapsed: true }));
+}
+
+export function deleteNode(roots: TodoNode[], id: string): TodoNode[] {
+  const walk = (arr: TodoNode[]): TodoNode[] => {
+    const out: TodoNode[] = [];
+    for (const n of arr) {
+      if (n.id === id) continue;
+      out.push({ ...n, children: walk(n.children ?? []) });
+    }
+    return out;
+  };
+  return walk(roots.map(cloneNode));
+}
+
+function setCheckedDeep(n: TodoNode, checked: boolean): TodoNode {
+  return {
+    ...n,
+    checked,
+    children: (n.children ?? []).map((c) => setCheckedDeep(c, checked)),
+  };
+}
+
+/**
+ * English comment:
+ * - Leaf tasks: user-controlled.
+ * - Parent tasks: auto-check when all children are checked.
+ * - If user toggles a parent, we cascade to children (common UX).
+ */
+function syncParentChecks(n: TodoNode): TodoNode {
+  if (!n.children?.length) return n;
+
+  const kids = n.children.map(syncParentChecks);
+  const allKidsChecked = kids.length > 0 && kids.every((k) => k.checked);
+
+  return {
+    ...n,
+    children: kids,
+    checked: allKidsChecked,
+  };
+}
+
+export function toggleCheck(roots: TodoNode[], id: string): TodoNode[] {
+  // 1) toggle + cascade if parent
+  const next = mapTree(roots, (n) => {
+    if (n.id !== id) return n;
+    const to = !n.checked;
+    if (n.children?.length) return setCheckedDeep(n, to);
+    return { ...n, checked: to };
+  });
+
+  // 2) sync parents bottom-up
+  return next.map(syncParentChecks);
+}
+
+export function getProgress(roots: TodoNode[]): { done: number; total: number; pct: number } {
+  let done = 0;
+  let total = 0;
+
+  const walk = (n: TodoNode) => {
+    total += 1;
+    if (n.checked) done += 1;
+    (n.children ?? []).forEach(walk);
+  };
+
+  roots.forEach(walk);
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  return { done, total, pct };
+}
+
+export function countByChecked(roots: TodoNode[]): { todo: number; done: number } {
+  let todo = 0;
+  let done = 0;
+
+  const walk = (n: TodoNode) => {
+    if (n.checked) done += 1;
+    else todo += 1;
+    (n.children ?? []).forEach(walk);
+  };
+
+  roots.forEach(walk);
+  return { todo, done };
+}
+
+/**
+ * English comment:
+ * Tab filter keeps structure:
+ * - Todo tab: shows nodes that are not checked OR have any unchecked descendant.
+ * - Done tab: shows nodes that are checked OR have any checked descendant.
+ */
+export function filterByTab(roots: TodoNode[], tab: "todo" | "done"): TodoNode[] {
+  const keep = (n: TodoNode): boolean => {
+    if (tab === "todo") {
+      if (!n.checked) return true;
+      return (n.children ?? []).some(keep);
+    }
+    // done tab
+    if (n.checked) return true;
+    return (n.children ?? []).some(keep);
+  };
+
+  const filterNode = (n: TodoNode): TodoNode | null => {
+    if (!keep(n)) return null;
+    const kids = (n.children ?? []).map(filterNode).filter(Boolean) as TodoNode[];
+    return { ...n, children: kids };
+  };
+
+  return roots.map(filterNode).filter(Boolean) as TodoNode[];
+}
+
+/**
+ * English comment:
+ * Search filter keeps matching nodes + their ancestors.
+ */
 export function filterByQuery(roots: TodoNode[], query: string): TodoNode[] {
   const q = query.trim().toLowerCase();
-  if (!q) return roots;
+  if (!q) return roots.map(cloneNode);
 
-  const walk = (n: TodoNode): TodoNode | null => {
-    const selfMatch = n.title.toLowerCase().includes(q);
-    const kids = n.children.map(walk).filter(Boolean) as TodoNode[];
+  const match = (n: TodoNode) => n.title.toLowerCase().includes(q);
 
-    if (selfMatch || kids.length) {
-      return { ...n, collapsed: false, children: kids };
-    }
+  const filterNode = (n: TodoNode): TodoNode | null => {
+    const kids = (n.children ?? []).map(filterNode).filter(Boolean) as TodoNode[];
+    if (match(n) || kids.length) return { ...n, children: kids };
     return null;
   };
 
-  return roots.map(walk).filter(Boolean) as TodoNode[];
-}
-
-/** Flatten for export: one row per node with full path. */
-export function flattenForExport(roots: TodoNode[]) {
-  const rows: Array<{
-    rootTitle: string;
-    fullPath: string;
-    title: string;
-    checked: "YES" | "NO";
-    isDoneGroup: "YES" | "NO";
-  }> = [];
-
-  const walk = (n: TodoNode, rootTitle: string, path: string[]) => {
-    const fullPath = path.join(" > ");
-    rows.push({
-      rootTitle,
-      fullPath,
-      title: n.title,
-      checked: isComplete(n) ? "YES" : "NO",
-      isDoneGroup: isDoneGroup(n) ? "YES" : "NO",
-    });
-
-    n.children.forEach((c) => walk(c, rootTitle, [...path, c.title]));
-  };
-
-  roots.forEach((r) => walk(r, r.title, [r.title]));
-  return rows;
-}
-
-/** Quick-add parser: indentation builds nesting. 2 spaces or 1 tab = 1 level. */
-export function parseIndented(text: string): TodoNode[] {
-  const lines = text
-    .split(/\r?\n/)
-    .map((l) => l.replace(/\s+$/g, ""))
-    .filter((l) => l.trim().length > 0);
-
-  type StackItem = { depth: number; node: TodoNode };
-
-  const roots: TodoNode[] = [];
-  const stack: StackItem[] = [];
-
-  const depthOf = (line: string) => {
-    let spaces = 0;
-    for (const ch of line) {
-      if (ch === " ") spaces += 1;
-      else if (ch === "\t") spaces += 2;
-      else break;
-    }
-    return Math.floor(spaces / 2);
-  };
-
-  for (const raw of lines) {
-    const depth = depthOf(raw);
-    const title = raw.trim().replace(/^[-*]\s+/, ""); // allow "- task" style
-    const node = createNode(title);
-
-    while (stack.length && stack[stack.length - 1]!.depth >= depth) stack.pop();
-
-    if (stack.length === 0) {
-      roots.push(node);
-      stack.push({ depth, node });
-    } else {
-      const parent = stack[stack.length - 1]!.node;
-      parent.children.push(node);
-      parent.collapsed = false;
-      stack.push({ depth, node });
-    }
-  }
-
-  return roots;
-}
-
-/** ✅ Safe finder (typed stack) — avoids 'never' inference */
-export function findById(roots: TodoNode[], id: string): TodoNode | null {
-  const stack: TodoNode[] = [...roots];
-  while (stack.length) {
-    const n = stack.pop();
-    if (!n) break;
-    if (n.id === id) return n;
-    if (n.children.length) stack.push(...n.children);
-  }
-  return null;
+  return roots.map(filterNode).filter(Boolean) as TodoNode[];
 }

@@ -1,8 +1,38 @@
 import React, { useMemo, useState } from "react";
-import Modal from "./Modal";
-import { parseIndented } from "../lib/tree";
 import type { TodoNode } from "../types";
-import { TEMPLATES } from "../lib/templates";
+
+function makeId() {
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(2, 7);
+}
+
+function buildTreeFromOutline(text: string): TodoNode[] {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const roots: TodoNode[] = [];
+  const stack: { depth: number; node: TodoNode }[] = [];
+
+  for (const raw of lines) {
+    const line = raw.replace(/\t/g, "  ");
+    const indent = line.match(/^\s*/)?.[0] ?? "";
+    const depth = Math.floor(indent.length / 2);
+    const title = line.trim();
+    if (!title) continue;
+
+    const node: TodoNode = { id: makeId(), title, checked: false, collapsed: false, children: [] };
+
+    while (stack.length && stack[stack.length - 1].depth >= depth) stack.pop();
+
+    if (!stack.length) {
+      roots.push(node);
+      stack.push({ depth, node });
+    } else {
+      const parent = stack[stack.length - 1].node;
+      parent.children.push(node);
+      stack.push({ depth, node });
+    }
+  }
+
+  return roots;
+}
 
 export default function QuickAddModal({
   open,
@@ -11,113 +41,75 @@ export default function QuickAddModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onAdd: (roots: TodoNode[]) => void;
+  onAdd: (nodes: TodoNode[]) => void;
 }) {
   const [text, setText] = useState("");
+  const [err, setErr] = useState("");
 
-  const preview = useMemo(() => {
-    try {
-      return parseIndented(text);
-    } catch {
-      return [];
-    }
-  }, [text]);
+  const hint = useMemo(
+    () =>
+      `Paste outline using 2 spaces per level:
 
-  const total = useMemo(() => countNodes(preview), [preview]);
-
-  return (
-    <Modal open={open} onClose={onClose} title="Quick Add (paste with indentation)">
-      <div className="stack">
-        <div className="rowWrap">
-          <label className="label">Templates</label>
-          <select
-            className="select"
-            value=""
-            onChange={(e) => {
-              const name = e.target.value;
-              const tpl = TEMPLATES.find((t) => t.name === name);
-              if (tpl) setText(tpl.text);
-            }}
-          >
-            <option value="" disabled>
-              Choose…
-            </option>
-            {TEMPLATES.map((t) => (
-              <option key={t.name} value={t.name}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <textarea
-          className="textarea"
-          placeholder={`Example:
 Cleaning
   Bed
-  Wall
-    Paint`}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={10}
-        />
+    Pillow
+  Plate`,
+    []
+  );
 
-        <div className="hint">
-          Tip: 2 spaces (or 1 tab) = 1 nesting level. Lines like "- Task" also work.
-        </div>
+  if (!open) return null;
 
-        <div className="rowBetween">
-          <div className="muted">{total ? `${total} items ready` : "Nothing to add yet"}</div>
-          <button
-            className="btn"
-            disabled={preview.length === 0}
-            onClick={() => {
-              onAdd(preview);
-              setText("");
-              onClose();
-            }}
-          >
-            Add
+  const submit = () => {
+    setErr("");
+    if (!text.trim()) {
+      setErr("Paste something first.");
+      return;
+    }
+    const nodes = buildTreeFromOutline(text);
+    if (!nodes.length) {
+      setErr("No tasks detected.");
+      return;
+    }
+    onAdd(nodes);
+    setText("");
+    onClose();
+  };
+
+  return (
+    <div className="modalOverlay" role="dialog" aria-modal="true" onMouseDown={onClose}>
+      <div className="modalPanel" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="modalHead">
+          <div className="modalTitle">Quick Add</div>
+          <button className="iconBtn" type="button" onClick={onClose} aria-label="Close">
+            ✕
           </button>
         </div>
 
-        {preview.length ? (
-          <div className="preview">
-            <div className="label">Preview</div>
-            <TreePreview roots={preview} />
+        <div className="modalBody">
+          <div className="hintBox">
+            <div className="hintTitle">Format</div>
+            <pre className="hintPre">{hint}</pre>
           </div>
-        ) : null}
+
+          <textarea
+            className="outlineBox"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Paste outline here…"
+          />
+
+          {err ? <div className="errorBox">{err}</div> : null}
+        </div>
+
+        <div className="modalFoot">
+          <button className="btn ghostBtn" type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn" type="button" onClick={submit}>
+            Add
+          </button>
+        </div>
       </div>
-    </Modal>
+    </div>
   );
-}
-
-function TreePreview({ roots }: { roots: TodoNode[] }) {
-  return (
-    <ul className="previewList">
-      {roots.map((r) => (
-        <PreviewNode key={r.id} node={r} />
-      ))}
-    </ul>
-  );
-}
-
-function PreviewNode({ node }: { node: TodoNode }) {
-  return (
-    <li>
-      <div className="previewItem">{node.title}</div>
-      {node.children.length ? (
-        <ul className="previewList">
-          {node.children.map((c) => (
-            <PreviewNode key={c.id} node={c} />
-          ))}
-        </ul>
-      ) : null}
-    </li>
-  );
-}
-
-function countNodes(roots: TodoNode[]): number {
-  const walk = (n: TodoNode): number => 1 + n.children.reduce((s, c) => s + walk(c), 0);
-  return roots.reduce((s, r) => s + walk(r), 0);
 }

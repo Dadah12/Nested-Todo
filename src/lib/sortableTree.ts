@@ -6,174 +6,158 @@ export type FlatItem = TodoNode & {
   childrenCount: number;
 };
 
-export const INDENTATION_WIDTH = 18;
+export function flattenTree(roots: TodoNode[]): FlatItem[] {
+  const out: FlatItem[] = [];
+  const walk = (n: TodoNode, parentId: string | null, depth: number) => {
+    out.push({
+      ...n,
+      parentId,
+      depth,
+      childrenCount: n.children?.length ?? 0,
+    });
+    (n.children ?? []).forEach((c) => walk(c, n.id, depth + 1));
+  };
+  roots.forEach((r) => walk(r, null, 0));
+  return out;
+}
 
-// Simple array move helper
-function arrayMove<T>(arr: T[], from: number, to: number) {
-  const next = arr.slice();
-  const [item] = next.splice(from, 1);
-  next.splice(to, 0, item);
+export function getVisibleItems(flat: FlatItem[]): FlatItem[] {
+  // English comment: Only show nodes whose ancestors are not collapsed.
+  const byId = new Map<string, FlatItem>();
+  flat.forEach((x) => byId.set(x.id, x));
+
+  const isVisible = (item: FlatItem) => {
+    let p = item.parentId ? byId.get(item.parentId) : null;
+    while (p) {
+      if (p.collapsed) return false;
+      p = p.parentId ? byId.get(p.parentId) : null;
+    }
+    return true;
+  };
+
+  return flat.filter(isVisible);
+}
+
+function cloneNode(n: TodoNode): TodoNode {
+  return { ...n, children: (n.children ?? []).map(cloneNode) };
+}
+
+function findNodeAndParent(
+  roots: TodoNode[],
+  id: string
+): { node: TodoNode | null; parent: TodoNode | null; index: number } {
+  const walk = (arr: TodoNode[], parent: TodoNode | null): any => {
+    for (let i = 0; i < arr.length; i++) {
+      const node = arr[i];
+      if (node.id === id) return { node, parent, index: i };
+      const found = walk(node.children ?? [], node);
+      if (found.node) return found;
+    }
+    return { node: null, parent: null, index: -1 };
+  };
+  return walk(roots, null);
+}
+
+function removeNode(roots: TodoNode[], id: string): { next: TodoNode[]; removed: TodoNode | null } {
+  const next = roots.map(cloneNode);
+  const found = findNodeAndParent(next, id);
+  if (!found.node) return { next, removed: null };
+
+  const arr = found.parent ? (found.parent.children ?? []) : next;
+  const [removed] = arr.splice(found.index, 1);
+  if (found.parent) found.parent.children = arr;
+  return { next, removed };
+}
+
+function insertNode(
+  roots: TodoNode[],
+  node: TodoNode,
+  parentId: string | null,
+  index: number
+): TodoNode[] {
+  const next = roots.map(cloneNode);
+  if (!parentId) {
+    const idx = Math.max(0, Math.min(index, next.length));
+    next.splice(idx, 0, cloneNode(node));
+    return next;
+  }
+
+  const foundParent = findNodeAndParent(next, parentId);
+  if (!foundParent.node) {
+    const idx = Math.max(0, Math.min(index, next.length));
+    next.splice(idx, 0, cloneNode(node));
+    return next;
+  }
+
+  const p = foundParent.node;
+  const kids = (p.children ?? []).map(cloneNode);
+  const idx = Math.max(0, Math.min(index, kids.length));
+  kids.splice(idx, 0, cloneNode(node));
+  p.children = kids;
   return next;
 }
 
-export function flattenTree(
-  roots: TodoNode[],
-  parentId: string | null = null,
-  depth = 0
-): FlatItem[] {
-  const out: FlatItem[] = [];
-
-  for (const node of roots) {
-    const childrenFlat = flattenTree(node.children ?? [], node.id, depth + 1);
-
-    out.push({
-      ...(node as any),
-      parentId,
-      depth,
-      // English comment: Number of descendants in the flattened list.
-      childrenCount: childrenFlat.length,
-    });
-
-    out.push(...childrenFlat);
-  }
-
-  return out;
+function getSiblings(roots: TodoNode[], parentId: string | null): TodoNode[] {
+  if (!parentId) return roots;
+  const found = findNodeAndParent(roots, parentId);
+  return found.node?.children ?? [];
 }
 
-export function buildTree(items: FlatItem[]): TodoNode[] {
-  const map = new Map<string, TodoNode>();
-  const roots: TodoNode[] = [];
-
-  // First pass: create clean nodes
-  for (const it of items) {
-    const { parentId, depth, childrenCount, ...node } = it as any;
-
-    map.set(node.id, {
-      ...node,
-      children: [],
-    });
-  }
-
-  // Second pass: attach children
-  for (const it of items) {
-    const node = map.get(it.id)!;
-
-    if (it.parentId) {
-      const parent = map.get(it.parentId);
-      if (parent) parent.children.push(node);
-      else roots.push(node);
-    } else {
-      roots.push(node);
-    }
-  }
-
-  return roots;
+function getParentId(flat: FlatItem[], id: string): string | null {
+  return flat.find((x) => x.id === id)?.parentId ?? null;
 }
 
-// Removes descendants of collapsed nodes from the visible list
-export function getVisibleItems(items: FlatItem[]): FlatItem[] {
-  const out: FlatItem[] = [];
-  let skipDepth: number | null = null;
-
-  for (const it of items) {
-    if (skipDepth !== null) {
-      if (it.depth > skipDepth) continue;
-      skipDepth = null;
-    }
-
-    out.push(it);
-
-    if ((it as any).collapsed) {
-      skipDepth = it.depth;
-    }
-  }
-
-  return out;
-}
-
-function findIndex(items: FlatItem[], id: string) {
-  return items.findIndex((x) => x.id === id);
-}
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function getParentIdForDepth(items: FlatItem[], insertIndex: number, depth: number): string | null {
-  if (depth <= 0) return null;
-
-  // English comment: Find the nearest previous item with depth = depth - 1
-  for (let i = insertIndex - 1; i >= 0; i--) {
-    if (items[i].depth === depth - 1) return items[i].id;
-  }
-  return null;
-}
-
-export function reorderTreeByDnD(params: {
+/**
+ * English comment:
+ * Drag behavior:
+ * - Vertical drag decides ordering.
+ * - Horizontal drag (offsetX) decides indent/outdent.
+ *   > slide right = indent (become child of previous visible item)
+ *   > slide left  = outdent (move up one level)
+ */
+export function reorderTreeByDnD(args: {
   roots: TodoNode[];
   activeId: string;
   overId: string;
   offsetX: number;
-}) {
-  const { roots, activeId, overId, offsetX } = params;
+}): TodoNode[] {
+  const { roots, activeId, overId, offsetX } = args;
+  if (!activeId || !overId || activeId === overId) return roots;
 
-  const flat = flattenTree(roots);
-  const activeIndex = findIndex(flat, activeId);
-  const overIndex = findIndex(flat, overId);
+  const flatAll = flattenTree(roots);
+  const visible = getVisibleItems(flatAll);
 
-  if (activeIndex === -1 || overIndex === -1) return roots;
+  const fromIndex = visible.findIndex((x) => x.id === activeId);
+  const toIndex = visible.findIndex((x) => x.id === overId);
+  if (fromIndex < 0 || toIndex < 0) return roots;
 
-  const active = flat[activeIndex];
-  const blockLen = 1 + (active.childrenCount ?? 0);
-  const block = flat.slice(activeIndex, activeIndex + blockLen);
+  const INDENT_PX = 22;
+  const OUTDENT_PX = -22;
 
-  // English comment: If "over" is inside the active subtree block, ignore.
-  if (overIndex >= activeIndex && overIndex < activeIndex + blockLen) return roots;
+  const currentParent = getParentId(flatAll, activeId);
+  let targetParent: string | null = currentParent;
 
-  // Remove block
-  const without = flat.slice(0, activeIndex).concat(flat.slice(activeIndex + blockLen));
+  if (offsetX >= INDENT_PX) {
+    const prev = visible[Math.max(0, toIndex - 1)];
+    if (prev && prev.id !== activeId) targetParent = prev.id;
+  } else if (offsetX <= OUTDENT_PX) {
+    if (currentParent) targetParent = getParentId(flatAll, currentParent);
+    else targetParent = null;
+  }
 
-  // Find insert position (before over item)
-  const overIndexWithout = findIndex(without, overId);
-  if (overIndexWithout === -1) return roots;
+  const { next: without, removed } = removeNode(roots, activeId);
+  if (!removed) return roots;
 
-  // Compute projected depth based on horizontal drag
-  const depthDelta = Math.round(offsetX / INDENTATION_WIDTH);
-  const baseDepth = active.depth;
+  const targetSiblings = getSiblings(without, targetParent);
+  const overInTarget = targetSiblings.findIndex((n) => n.id === overId);
 
-  const prev = without[overIndexWithout - 1];
-  const next = without[overIndexWithout];
+  let insertIndex = targetSiblings.length;
+  if (overInTarget >= 0) {
+    insertIndex = overInTarget;
 
-  const maxDepth = prev ? prev.depth + 1 : 0;
-  const minDepth = next ? next.depth : 0;
+    // If moving downward in same target list, drop after
+    if (toIndex > fromIndex) insertIndex = overInTarget + 1;
+  }
 
-  const projectedDepth = clamp(baseDepth + depthDelta, minDepth, maxDepth);
-  const newParentId = getParentIdForDepth(without, overIndexWithout, projectedDepth);
-
-  // Apply new depth to the whole subtree block (keep internal structure)
-  const depthShift = projectedDepth - baseDepth;
-
-  const updatedBlock = block.map((it, idx) => {
-    const updated: FlatItem = { ...(it as any) };
-
-    updated.depth = it.depth + depthShift;
-
-    if (idx === 0) {
-      // English comment: Only the root of the moved block changes parentId.
-      updated.parentId = newParentId;
-    } else {
-      // English comment: Keep subtree parent links as-is.
-      updated.parentId = it.parentId;
-    }
-
-    return updated;
-  });
-
-  // Insert block
-  const nextFlat = without
-    .slice(0, overIndexWithout)
-    .concat(updatedBlock, without.slice(overIndexWithout));
-
-  // Rebuild tree
-  return buildTree(nextFlat);
+  return insertNode(without, removed, targetParent, insertIndex);
 }

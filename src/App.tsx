@@ -1,222 +1,147 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Tabs from "./components/Tabs";
-import SearchBar from "./components/SearchBar";
-import ProgressBar from "./components/ProgressBar";
-import TaskTree from "./components/TaskTree";
-import EmptyState from "./components/EmptyState";
-import Footer from "./components/Footer";
-import QuickAddModal from "./components/QuickAddModal";
-import { ToastProvider, useToast } from "./components/Toast";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "framer-motion";
+import { ClipboardPaste, Download, FileText, Trash2, Upload } from "lucide-react";
+
 import type { TodoNode } from "./types";
+
+import SearchBar from "./components/SearchBar";
+import Tabs from "./components/Tabs";
+import ProgressBar from "./components/ProgressBar";
+import EmptyState from "./components/EmptyState";
+import QuickAddModal from "./components/QuickAddModal";
+import ImportTasksModal from "./components/ImportTasksModal";
+import Footer from "./components/Footer";
+import TaskListDnD from "./components/TaskListDnD";
+import { ToastProvider, useToast } from "./components/Toast";
+
+import { loadState, saveState } from "./lib/storage";
+import { DEFAULT_TEMPLATE } from "./lib/templates";
 import {
-  buildParentMap,
+  addChild,
+  addRoot,
+  collapseAll,
+  countByChecked,
+  deleteNode,
+  expandAll,
   filterByQuery,
-  insertChild,
-  insertRoot,
-  isDoneGroup,
-  rename,
-  deleteById,
+  filterByTab,
+  getProgress,
+  insertManyRoots,
+  renameNode,
   toggleCheck,
   toggleCollapse,
-  setCollapseAll,
-  countProgressForest,
-  reorderSiblings,
-  parseIndented,
+  upsertUnderParent,
 } from "./lib/tree";
-import { clearAll, loadHeart, loadTree, saveHeart, saveTree } from "./lib/storage";
-import { exportCSV, exportPrintable } from "./lib/exporters";
-import { DndContext, DragEndEvent, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
-import { motion } from "framer-motion";
-import { Download, FileText, Plus, Trash2, ChevronDown, ChevronUp, ClipboardPaste } from "lucide-react";
-
-type Tab = "todo" | "done";
+import { exportCSV, exportPDFViaPrint } from "./lib/exporters";
 
 function AppInner() {
   const toast = useToast();
 
-  const [roots, setRoots] = useState<TodoNode[]>(() => loadTree());
-  const [tab, setTab] = useState<Tab>("todo");
+  const [roots, setRoots] = useState<TodoNode[]>(() => {
+    const s = loadState();
+    return s?.roots?.length ? s.roots : DEFAULT_TEMPLATE;
+  });
+
+  const [tab, setTab] = useState<"todo" | "done">("todo");
   const [query, setQuery] = useState("");
-  const [editingId, setEditingId] = useState<string | null>(null);
 
   const [newTitle, setNewTitle] = useState("");
   const newInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [heartOn, setHeartOn] = useState<boolean>(() => loadHeart());
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [quickAddUnder, setQuickAddUnder] = useState<string | null>(null);
 
-  // Auto-save (debounced)
+  const [importOpen, setImportOpen] = useState(false);
+
   useEffect(() => {
-    const t = window.setTimeout(() => saveTree(roots), 200);
-    return () => window.clearTimeout(t);
+    saveState({ roots });
   }, [roots]);
 
-  useEffect(() => saveHeart(heartOn), [heartOn]);
+  const tabFiltered = useMemo(() => filterByTab(roots, tab), [roots, tab]);
+  const viewRoots = useMemo(() => filterByQuery(tabFiltered, query), [tabFiltered, query]);
 
-  // Sensors tuned for mobile (small drag threshold so taps still tap)
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
-    })
-  );
+  const progView = useMemo(() => getProgress(tabFiltered), [tabFiltered]);
+  const progAll = useMemo(() => getProgress(roots), [roots]);
 
-  const parentMap = useMemo(() => buildParentMap(roots), [roots]);
+  const counts = useMemo(() => countByChecked(roots), [roots]);
 
-  const todoRoots = useMemo(() => roots.filter((r) => !isDoneGroup(r)), [roots]);
-  const doneRoots = useMemo(() => roots.filter((r) => isDoneGroup(r)), [roots]);
+  // Premium: reorder only when Todo tab + no search
+  const showHandles = tab === "todo" && query.trim() === "";
 
-  const baseList = tab === "todo" ? todoRoots : doneRoots;
-  const filteredList = useMemo(() => filterByQuery(baseList, query), [baseList, query]);
-
-  const globalProg = useMemo(() => countProgressForest(roots), [roots]);
-  const listProg = useMemo(() => countProgressForest(baseList), [baseList]);
-
-  const onAddRoot = useCallback(() => {
-    const t = newTitle.trim();
-    if (!t) return;
-    setRoots((r) => insertRoot(r, t));
+  const onAddRoot = () => {
+    const title = newTitle.trim();
+    if (!title) return;
+    setRoots((prev) => addRoot(prev, title));
     setNewTitle("");
-    toast.push("Added");
-    newInputRef.current?.focus();
-  }, [newTitle, toast]);
-
-  const onAddChild = useCallback(
-    (parentId: string) => {
-      const title = prompt("Subtask title?");
-      if (!title) return;
-      setRoots((r) => insertChild(r, parentId, title));
-      toast.push("Added subtask");
-    },
-    [toast]
-  );
-
-  const onQuickAddUnder = useCallback((parentId: string) => {
-    setQuickAddUnder(parentId);
-    setQuickAddOpen(true);
-  }, []);
-
-  const onQuickAddRoots = useCallback((nodes: TodoNode[]) => {
-    if (!nodes.length) return;
-    setRoots((r) => [...r, ...nodes]);
-    toast.push("Quick add imported");
-  }, [toast]);
-
-  const onQuickAddUnderCommit = useCallback((nodes: TodoNode[]) => {
-    if (!nodes.length || !quickAddUnder) return;
-    // merge as children under the selected node
-    setRoots((r) => {
-      // reuse insertChild in batch: updateById would be better; simplest: parse then attach
-      const attach = (arr: TodoNode[]): TodoNode[] => {
-        return arr.map((n) => {
-          if (n.id === quickAddUnder) {
-            return { ...n, collapsed: false, children: [...n.children, ...nodes] };
-          }
-          if (!n.children.length) return n;
-          return { ...n, children: attach(n.children) };
-        });
-      };
-      return attach(r);
-    });
-    toast.push("Quick add (under) imported");
-  }, [quickAddUnder, toast]);
-
-  const onDelete = useCallback(
-    (id: string) => {
-      const ok = confirm("Delete this item and all its subtasks?");
-      if (!ok) return;
-      setRoots((r) => deleteById(r, id));
-      toast.push("Deleted");
-    },
-    [toast]
-  );
-
-  const onRename = useCallback(
-    (id: string, title: string) => {
-      setRoots((r) => rename(r, id, title));
-      toast.push("Saved");
-    },
-    [toast]
-  );
-
-  const onToggleCheck = useCallback((id: string) => {
-    setRoots((r) => toggleCheck(r, id));
-  }, []);
-
-  const onToggleCollapse = useCallback((id: string) => {
-    setRoots((r) => toggleCollapse(r, id));
-  }, []);
-
-  const [activeDragId, setActiveDragId] = useState<string | null>(null);
-
-  const onDragEnd = useCallback(
-    (e: DragEndEvent) => {
-      const { active, over } = e;
-      setActiveDragId(null);
-      if (!over || active.id === over.id) return;
-
-      const a = String(active.id);
-      const o = String(over.id);
-
-      const pa = parentMap.get(a);
-      const po = parentMap.get(o);
-
-      // siblings only: same parent
-      if (pa !== po) return;
-
-      // Premium rule: only reorder inside current view list for roots.
-      // For nested, always allowed (siblings only).
-      // For roots in Done tab, we keep them stable (no reorder) to avoid confusion.
-      if (pa === null && tab === "done") return;
-
-      setRoots((r) => reorderSiblings(r, pa ?? null, a, o));
-      toast.push("Reordered");
-    },
-    [parentMap, tab, toast]
-  );
-
-  const showHandles = tab === "todo"; // allow dragging in Todo list (roots + nested). Done is view-only.
-  const expandAll = useCallback(() => setRoots((r) => setCollapseAll(r, false)), []);
-  const collapseAll = useCallback(() => setRoots((r) => setCollapseAll(r, true)), []);
-
-  const onExportCSV = useCallback(() => {
-    exportCSV(roots);
-    toast.push("Exported CSV");
-  }, [roots, toast]);
-
-  const onExportPDF = useCallback(() => {
-    exportPrintable(roots);
-    toast.push("Opened print view");
-  }, [roots, toast]);
-
-  const onReset = useCallback(() => {
-    const ok = confirm("Reset all data? Tip: Export first to keep a backup.");
-    if (!ok) return;
-    clearAll();
-    setRoots([]);
-    setQuery("");
-    toast.push("Reset complete");
-  }, [toast]);
-
-  // Keyboard shortcuts: Enter add, Escape cancel editing
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setEditingId(null);
-        setQuickAddOpen(false);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  const onNewKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") onAddRoot();
-    if (e.key === "Escape") setNewTitle("");
+    requestAnimationFrame(() => newInputRef.current?.focus());
   };
 
-  const emptyKind = tab;
+  const onAddChild = (parentId: string) => {
+    const title = prompt("Subtask title")?.trim();
+    if (!title) return;
+    setRoots((prev) => addChild(prev, parentId, title));
+  };
+
+  const onDelete = (id: string) => {
+    if (!confirm("Delete this task?")) return;
+    setRoots((prev) => deleteNode(prev, id));
+    toast.success("Deleted.");
+  };
+
+  const onRename = (id: string, title: string) => {
+    setRoots((prev) => renameNode(prev, id, title));
+  };
+
+  const onToggleCheck = (id: string) => {
+    setRoots((prev) => toggleCheck(prev, id));
+  };
+
+  const onToggleCollapse = (id: string) => {
+    setRoots((prev) => toggleCollapse(prev, id));
+  };
+
+  const expandAllNow = () => setRoots((prev) => expandAll(prev));
+  const collapseAllNow = () => setRoots((prev) => collapseAll(prev));
+
+  const onRequestQuickAddUnder = (parentId: string) => {
+    setQuickAddUnder(parentId);
+    setQuickAddOpen(true);
+  };
+
+  const onQuickAddCommit = (nodes: TodoNode[]) => {
+    if (quickAddUnder) setRoots((prev) => upsertUnderParent(prev, quickAddUnder, nodes));
+    else setRoots((prev) => insertManyRoots(prev, nodes));
+
+    setQuickAddUnder(null);
+    setQuickAddOpen(false);
+    toast.success("Added.");
+  };
+
+  const onExportCSV = () => {
+    try {
+      exportCSV(roots);
+      toast.success("Exported CSV.");
+    } catch {
+      toast.error("CSV export failed.");
+    }
+  };
+
+  const onExportPDF = () => {
+    try {
+      exportPDFViaPrint(roots);
+      toast.success("Use Print → Save as PDF.");
+    } catch {
+      toast.error("PDF export failed.");
+    }
+  };
+
+  const onReset = () => {
+    if (!confirm("Reset all tasks? This cannot be undone.")) return;
+    setRoots(DEFAULT_TEMPLATE);
+    toast.success("Reset done.");
+  };
 
   return (
     <div className="page">
@@ -231,7 +156,7 @@ function AppInner() {
 
         <div className="controls">
           <SearchBar value={query} onChange={setQuery} onClear={() => setQuery("")} />
-          <Tabs tab={tab} onTab={setTab} todoCount={todoRoots.length} doneCount={doneRoots.length} />
+          <Tabs tab={tab} onTab={setTab} todoCount={counts.todo} doneCount={counts.done} />
         </div>
       </header>
 
@@ -243,31 +168,52 @@ function AppInner() {
             placeholder="Add a task… (Enter)"
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            onKeyDown={onNewKey}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onAddRoot();
+              if (e.key === "Escape") setNewTitle("");
+            }}
           />
-          <motion.button className="btn" whileTap={{ scale: 0.96 }} onClick={onAddRoot} aria-label="Add task">
-            <Plus size={18} />
-            Add
+
+          <motion.button
+            className="btn"
+            whileTap={{ scale: 0.96 }}
+            onClick={() => setImportOpen(true)}
+            aria-label="Upload / Import tasks"
+            title="Upload / Import tasks"
+          >
+            <Upload size={18} />
+            Upload
           </motion.button>
-          <motion.button className="btn ghostBtn" whileTap={{ scale: 0.96 }} onClick={() => { setQuickAddUnder(null); setQuickAddOpen(true); }}>
+
+          <motion.button
+            className="btn ghostBtn"
+            whileTap={{ scale: 0.96 }}
+            onClick={() => {
+              setQuickAddUnder(null);
+              setQuickAddOpen(true);
+            }}
+            aria-label="Quick add"
+            title="Quick add"
+          >
             <ClipboardPaste size={18} />
             Quick Add
           </motion.button>
         </div>
 
         <div className="barRow">
-          <ProgressBar done={listProg.done} total={listProg.total} label={tab === "todo" ? "This list" : "Done groups"} />
+          <ProgressBar done={progView.done} total={progView.total} label={tab === "todo" ? "This list" : "Done view"} />
         </div>
 
         <div className="toolbar">
           <div className="toolLeft">
-            <button className="chip" onClick={expandAll} title="Expand all">
-              <ChevronDown size={16} /> Expand all
+            <button className="chip" onClick={expandAllNow} title="Expand all">
+              Expand all
             </button>
-            <button className="chip" onClick={collapseAll} title="Collapse all">
-              <ChevronUp size={16} /> Collapse all
+            <button className="chip" onClick={collapseAllNow} title="Collapse all">
+              Collapse all
             </button>
           </div>
+
           <div className="toolRight">
             <button className="chip" onClick={onExportCSV} title="Export CSV">
               <Download size={16} /> CSV
@@ -281,54 +227,46 @@ function AppInner() {
           </div>
         </div>
 
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={(e) => setActiveDragId(String(e.active.id))}
-          onDragEnd={onDragEnd}
-          onDragCancel={() => setActiveDragId(null)}
-        >
-          {filteredList.length ? (
-            <TaskTree
-              roots={filteredList}
-              editingId={editingId}
-              setEditingId={setEditingId}
-              onAddChild={onAddChild}
-              onDelete={onDelete}
-              onRename={onRename}
-              onToggleCheck={onToggleCheck}
-              onToggleCollapse={onToggleCollapse}
-              onRequestQuickAddUnder={onQuickAddUnder}
-              searchQuery={query}
-              showHandles={showHandles}
-            />
-          ) : (
-            <EmptyState kind={emptyKind} />
-          )}
-
-          <DragOverlay>
-            {activeDragId ? (
-              <div className="dragOverlayCard">Moving…</div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+        {viewRoots.length ? (
+          <TaskListDnD
+            roots={roots}
+            viewRoots={viewRoots}
+            setRoots={setRoots}
+            editingId={editingId}
+            setEditingId={setEditingId}
+            onAddChild={onAddChild}
+            onDelete={onDelete}
+            onRename={onRename}
+            onToggleCheck={onToggleCheck}
+            onToggleCollapse={onToggleCollapse}
+            onRequestQuickAddUnder={onRequestQuickAddUnder}
+            searchQuery={query}
+            showHandles={showHandles}
+          />
+        ) : (
+          <EmptyState kind={tab} />
+        )}
 
         <div className="barRow">
-          <ProgressBar done={globalProg.done} total={globalProg.total} label="All tasks" />
+          <ProgressBar done={progAll.done} total={progAll.total} label="All tasks" />
         </div>
       </main>
 
-      <Footer
-        heartOn={heartOn}
-        toggleHeart={() => setHeartOn((v) => !v)}
-      />
+      <Footer />
 
-      <QuickAddModal
-        open={quickAddOpen}
-        onClose={() => setQuickAddOpen(false)}
-        onAdd={(nodes) => {
-          if (quickAddUnder) onQuickAddUnderCommit(nodes);
-          else onQuickAddRoots(nodes);
+      <QuickAddModal open={quickAddOpen} onClose={() => setQuickAddOpen(false)} onAdd={onQuickAddCommit} />
+
+      <ImportTasksModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImport={(nodes, mode) => {
+          if (mode === "replace") {
+            setRoots(nodes);
+            toast.success("Imported (replaced).");
+            return;
+          }
+          setRoots((prev) => insertManyRoots(prev, nodes));
+          toast.success("Imported (merged).");
         }}
       />
     </div>

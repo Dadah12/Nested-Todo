@@ -13,11 +13,11 @@ export default function Tabs({
 }) {
   return (
     <div className="tabs">
-      <button className={`tab ${tab === "todo" ? "active" : ""}`} onClick={() => onTab("todo")}>
-        Todo <span className="pill">{todoCount}</span>
+      <button className={`tabPill ${tab === "todo" ? "active" : ""}`} onClick={() => onTab("todo")} type="button">
+        Todo <span className="badge">{todoCount}</span>
       </button>
-      <button className={`tab ${tab === "done" ? "active" : ""}`} onClick={() => onTab("done")}>
-        Done <span className="pill">{doneCount}</span>
+      <button className={`tabPill ${tab === "done" ? "active" : ""}`} onClick={() => onTab("done")} type="button">
+        Done <span className="badge">{doneCount}</span>
       </button>
     </div>
   );
